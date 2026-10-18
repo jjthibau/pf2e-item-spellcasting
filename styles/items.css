@@ -1,0 +1,11 @@
+.item-spellcasting {padding:6px 0;color:var(--text-dark)}
+.item-spellcasting h3 {font:700 18px var(--serif);color:var(--color-pf-primary,#5e0000);border-bottom:1px solid var(--color-border-light-2);margin:12px 0 6px}
+.item-spellcasting .item-row {display:flex;align-items:center;gap:6px;padding:5px 3px;border-bottom:1px solid #7773;flex-wrap:wrap}
+.item-spellcasting .item-label {flex:1;min-width:140px;text-align:left;background:none;border:0;font:inherit;color:inherit}
+.item-spellcasting .item-row img {width:26px;height:26px;border:0}
+.item-spellcasting button {width:auto;height:auto;min-height:24px;padding:2px 7px;font:inherit}
+.item-spellcasting .status {font-size:12px;opacity:.85}
+.item-spellcasting .staff-spells {margin-left:24px}
+.item-spellcasting .item-row input[type=number] {width:44px}
+.item-spellcasting .item-row .spell-slots-input input,.item-spellcasting .item-row .spell-max-input input {width:32px;text-align:center}
+.item-spellcasting .item-row .item-uses-reset {background:none;border:0;padding:0 3px;box-shadow:none;color:inherit}

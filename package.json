@@ -1,0 +1,12 @@
+{
+  "name": "pf2e-item-spellcasting",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check scripts/main.js && node --check scripts/transport.js",
+    "build": "python tools/build_release.py",
+    "test": "npm run check",
+    "check:release": "python tools/check_release.py"
+  }
+}
