@@ -34,8 +34,11 @@ async function postSpell(actor,source,entry,origin){
  const data=message.toObject();foundry.utils.setProperty(data,'flags.pf2e.casting.embeddedSpell',spell.toObject());foundry.utils.setProperty(data,`flags.${ID}.origin`,origin.uuid);
  return ChatMessage.create(data);
 }
-const receipt=(status,operation,itemUuid,extra={})=>({apiVersion:1,status,operation,itemUuid:itemUuid??null,...extra});
-function completedCast(itemUuid,message,itemConsumed=false){if(typeof message?.uuid!=='string'||!message.uuid)throw Error('The spell card completion could not be observed.');return receipt('completed','cast',itemUuid,{createdMessageUuid:message.uuid,commitObserved:true,cast:true,...(itemConsumed?{itemConsumed:true}:{})});}
+const worldId='[A-Za-z0-9_-]{1,64}',itemUuidPattern=new RegExp(`^(?:Actor\\.${worldId}|Scene\\.${worldId}\\.Token\\.${worldId}\\.Actor\\.${worldId})\\.Item\\.${worldId}$`),messageUuidPattern=new RegExp(`^ChatMessage\\.${worldId}$`);
+const validItemUuid=value=>typeof value==='string'&&value.length<=384&&!/[^A-Za-z0-9_.-]/.test(value)&&itemUuidPattern.test(value);
+const validMessageUuid=value=>typeof value==='string'&&value.length<=76&&!/[^A-Za-z0-9_.-]/.test(value)&&messageUuidPattern.test(value);
+const receipt=(status,operation,itemUuid,extra={})=>validItemUuid(itemUuid)?{apiVersion:1,status,operation,itemUuid,...extra}:{apiVersion:1,status:'unknown',operation,itemUuid:null};
+function completedCast(itemUuid,message,itemConsumed=false){if(!validMessageUuid(message?.uuid))throw Error('The spell card completion could not be observed.');return receipt('completed','cast',itemUuid,{createdMessageUuid:message.uuid,commitObserved:true,cast:true,...(itemConsumed?{itemConsumed:true}:{})});}
 async function castingChoice(item,spell,withReceipt=false){
  const a=item.actor,normal=a.spellcasting.filter(e=>e.statistic&&e.canCast(spell,{origin:item})).sort((x,y)=>y.statistic.dc.value-x.statistic.dc.value);
  if(normal.length)return {entry:normal[0].original?.id??normal[0].id};
@@ -145,7 +148,7 @@ function boundedReceipt(value,operation,itemUuid){
  if(value.operation!==operation&&!(operation==='cast'&&value.operation==='destroy-wand'))return unknown();
  if(value.status==='completed'){
   if(value.commitObserved!==true)return unknown();
-  if(value.operation==='cast'){if(value.cast!==true||typeof value.createdMessageUuid!=='string'||!value.createdMessageUuid)return unknown();return completedCast(itemUuid,{uuid:value.createdMessageUuid},value.itemConsumed===true);}
+  if(value.operation==='cast'){if(value.cast!==true||!validMessageUuid(value.createdMessageUuid))return unknown();return completedCast(itemUuid,{uuid:value.createdMessageUuid},value.itemConsumed===true);}
   if(value.operation==='destroy-wand'){if(value.cast!==false)return unknown();return receipt('completed','destroy-wand',itemUuid,{commitObserved:true,cast:false});}
   return receipt('completed','prepare',itemUuid,{commitObserved:true});
  }
@@ -154,8 +157,8 @@ function boundedReceipt(value,operation,itemUuid){
  return receipt(value.status,operation,itemUuid);
 }
 export const receiptsV1=Object.freeze({apiVersion:1,
- async cast(item,spellKey){const uuid=item?.uuid;try{return boundedReceipt(await castWorkflow(item,spellKey,true),'cast',uuid);}catch{return receipt('unknown','cast',uuid);}},
- async prepare(item){const uuid=item?.uuid;try{return boundedReceipt(await prepareWorkflow(item,true),'prepare',uuid);}catch{return receipt('unknown','prepare',uuid);}}
+ async cast(item,spellKey){const uuid=item?.uuid;if(!validItemUuid(uuid))return receipt('unknown','cast',null);try{return boundedReceipt(await castWorkflow(item,spellKey,true),'cast',uuid);}catch{return receipt('unknown','cast',uuid);}},
+ async prepare(item){const uuid=item?.uuid;if(!validItemUuid(uuid))return receipt('unknown','prepare',null);try{return boundedReceipt(await prepareWorkflow(item,true),'prepare',uuid);}catch{return receipt('unknown','prepare',uuid);}}
 });
 async function render(sheet,html){
  const a=sheet.actor,root=html instanceof HTMLElement?html:html[0];if(!a.isOfType('character'))return;

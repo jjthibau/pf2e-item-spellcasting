@@ -24,7 +24,7 @@ These methods use the existing dialogs, ownership checks, rules and serialized n
 }
 ```
 
-`itemUuid` is captured before execution; final-scroll deletion does not erase it. Invalid input with no UUID has `itemUuid: null` and an unknown outcome.
+`itemUuid` is captured before execution; final-scroll deletion does not erase it. Only owned-world item UUID shapes `Actor.<id>.Item.<id>` and `Scene.<id>.Token.<id>.Actor.<id>.Item.<id>` are accepted. IDs contain 1?64 ASCII letters, digits, underscores or hyphens; source UUIDs are capped at 384 characters. Message UUIDs must be world `ChatMessage.<id>` (at most 76 characters). Control characters, compendium/wrong-document paths and oversized values are rejected. Invalid source input returns `itemUuid: null` with an unknown outcome before activation; invalid authority message references also remain unknown and are never echoed.
 
 | Status | Meaning |
 | --- | --- |
