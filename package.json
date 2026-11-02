@@ -6,7 +6,7 @@
   "scripts": {
     "check": "node --check scripts/main.js && node --check scripts/transport.js",
     "build": "python tools/build_release.py",
-    "test": "npm run check",
+    "test": "npm run check && node --test tests/*.test.mjs",
     "check:release": "python tools/check_release.py"
   }
 }
