@@ -34,7 +34,9 @@ async function postSpell(actor,source,entry,origin){
  const data=message.toObject();foundry.utils.setProperty(data,'flags.pf2e.casting.embeddedSpell',spell.toObject());foundry.utils.setProperty(data,`flags.${ID}.origin`,origin.uuid);
  return ChatMessage.create(data);
 }
-async function castingChoice(item,spell){
+const receipt=(status,operation,itemUuid,extra={})=>({apiVersion:1,status,operation,itemUuid:itemUuid??null,...extra});
+function completedCast(itemUuid,message,itemConsumed=false){if(typeof message?.uuid!=='string'||!message.uuid)throw Error('The spell card completion could not be observed.');return receipt('completed','cast',itemUuid,{createdMessageUuid:message.uuid,commitObserved:true,cast:true,...(itemConsumed?{itemConsumed:true}:{})});}
+async function castingChoice(item,spell,withReceipt=false){
  const a=item.actor,normal=a.spellcasting.filter(e=>e.statistic&&e.canCast(spell,{origin:item})).sort((x,y)=>y.statistic.dc.value-x.statistic.dc.value);
  if(normal.length)return {entry:normal[0].original?.id??normal[0].id};
  if(!a.itemTypes.feat.some(f=>f.slug==='trick-magic-item'))throw Error('No matching spellcasting ability or Trick Magic Item.');
@@ -45,7 +47,7 @@ async function castingChoice(item,spell){
  if(!skill)return null;
  const dc=[14,15,16,18,19,20,22,23,24,26,27,28,30,31,32,34,35,36,38,39,40,42,44,46,48,50][Math.clamp(item.level,0,25)]-(game.pf2e.settings.variants.pwol.enabled?item.level:0);
  const roll=await a.skills[skill].check.roll({dc:{value:dc},item,extraRollOptions:['action:trick-magic-item']});if(!roll)return null;
- if(roll.degreeOfSuccess<2){await request(a,'trickFailure',{item:item.id,critical:roll.degreeOfSuccess===0,turn:turnKey()});return null;}
+ if(roll.degreeOfSuccess<2){await request(a,'trickFailure',{item:item.id,critical:roll.degreeOfSuccess===0,turn:turnKey()});return withReceipt?{trickFailed:true}:null;}
  return {entry:`trick-${skill}`,trick:true};
 }
 async function execute(a,action,d){
@@ -55,7 +57,7 @@ async function execute(a,action,d){
   const staff=a.items.get(a.getFlag(ID,'day')?.staff);if(isStaff(staff)){const charges=maxRank(a);await staff.setFlag(ID,'state',{preparedBy:a.uuid,expires:game.time.worldTime+86400,charges,max:charges});await a.setFlag(ID,'day',{staff:staff.id,rested:true});}else await a.unsetFlag(ID,'day');
   return {status:'rested'};
  }
- const item=a.items.get(d.item);if(!eligible(item))throw Error('That casting item is no longer available.');
+ const item=a.items.get(d.item),originUuid=item?.uuid;if(!eligible(item))throw Error('That casting item is no longer available.');
  if(action==='trickFailure'){const s=flags(item);await item.setFlag(ID,'state',{...s,trickLocks:{...s.trickLocks,[a.id]:{blocked:!!d.critical,turn:d.turn,epoch:a.getFlag(ID,'restEpoch')??0}}});return {status:'failed'};}
  if(action==='reset'){if(!isConsumable(item)||item.category!=='wand')throw Error('Not a wand.');await item.update({'system.uses.value':item.uses.max,[`flags.${ID}.state`]:{...flags(item),overcharged:false}});return {status:'reset'};}
  if(action==='wandUses'){
@@ -71,7 +73,7 @@ async function execute(a,action,d){
   const prior=flags(item);if(prior.preparedBy&&prior.preparedBy!==a.uuid&&prior.expires>game.time.worldTime)throw Error('Another character prepared this staff today.');
   const spells=await staffSpells(item);if(!spells.some(s=>statEntries(a,spellFrom(s.source,a,entries(a)[0])).length))throw Error('None of this staff’s spells are on your spell list.');
   let extra=0;if(d.slot){const e=a.spellcasting.get(d.slot.entry),rank=Number(d.slot.rank),slot=e?.system.slots[`slot${rank}`];if(!e?.isPrepared||!slot?.max)throw Error('Invalid prepared slot.');if(e.isFlexible){if(slot.value<1)throw Error('That slot was spent.');await e.update({[`system.slots.slot${rank}.value`]:slot.value-1});}else{const p=slot.prepared[d.slot.index];if(!p||p.expended)throw Error('That prepared slot was spent.');const prepared=Array.from({length:slot.max},(_,i)=>clone(slot.prepared[i]??{id:null,expended:false}));prepared[d.slot.index].expended=true;await e.update({[`system.slots.slot${rank}.prepared`]:prepared});}extra=rank;}
-  const charges=maxRank(a)+extra;await item.setFlag(ID,'state',{preparedBy:a.uuid,expires:game.time.worldTime+86400,charges,max:charges});await a.setFlag(ID,'day',{staff:item.id});return {status:'prepared',charges};
+  const charges=maxRank(a)+extra;await item.setFlag(ID,'state',{preparedBy:a.uuid,expires:game.time.worldTime+86400,charges,max:charges});await a.setFlag(ID,'day',{staff:item.id});return d.receiptV1?receipt('completed','prepare',originUuid,{commitObserved:true}):{status:'prepared',charges};
  }
  if(action==='charges'){
   if(!isStaff(item)||a.getFlag(ID,'day')?.staff!==item.id||flags(item).preparedBy!==a.uuid)throw Error('Prepare this staff first.');
@@ -90,7 +92,7 @@ async function execute(a,action,d){
   if(slot)await slotEntry.update({[`system.slots.slot${d.slot.rank}.value`]:slot.value-1});
   if(cost)await item.setFlag(ID,'state',{...state,charges:state.charges-cost});
   if(day.rested)await a.setFlag(ID,'day',{staff:item.id,rested:false});
-  await postSpell(a,row.source,e,item);return {status:'cast',cost};
+  const message=await postSpell(a,row.source,e,item);return d.receiptV1?completedCast(originUuid,message):{status:'cast',cost};
  }
  const e=a.spellcasting.get(d.entry),spell=item.embeddedSpell,state=flags(item);
  if(!e?.statistic||(!d.trick&&!e.canCast(spell,{origin:item})))throw Error('That spellcasting ability cannot activate this item.');
@@ -98,42 +100,63 @@ async function execute(a,action,d){
  if(item.category==='wand'&&state.condition)throw Error(`This wand is ${state.condition}.`);
  const over=item.category==='wand'&&item.uses.value<1;
  if(over&&!d.overcharge)throw Error('Confirm overcharging first.');
- if(over&&state.overcharged){await item.setFlag(ID,'state',{...state,condition:'destroyed'});return {status:'destroyed'};}
- await postSpell(a,spell.toObject(),e,item);
+ if(over&&state.overcharged){await item.setFlag(ID,'state',{...state,condition:'destroyed'});return d.receiptV1?receipt('completed','destroy-wand',originUuid,{commitObserved:true,cast:false}):{status:'destroyed'};}
+ const message=await postSpell(a,spell.toObject(),e,item);let itemConsumed=false;
  if(item.category==='scroll'){
-  if(item.quantity>1)await item.update({'system.quantity':item.quantity-1});else await item.delete();
+  if(item.quantity>1)await item.update({'system.quantity':item.quantity-1});else{await item.delete();itemConsumed=true;}
  }else if(!over)await item.update({'system.uses.value':Math.max(0,item.uses.value-1)});
  else{
   const roll=await new Roll('1d20').evaluate(),condition=roll.total>=10?'broken':'destroyed';await item.setFlag(ID,'state',{...state,overcharged:true,condition});
   await roll.toMessage({speaker:ChatMessage.getSpeaker({actor:a}),flavor:`${esc(item.name)} — Overcharge DC 10: ${condition}.`});
  }
- return {status:'cast',overcharge:over};
+ return d.receiptV1?completedCast(originUuid,message,itemConsumed):{status:'cast',overcharge:over};
 }
 
-export async function cast(item,spellKey){
- owned(item);if(busy.has(item.uuid))return;busy.add(item.uuid);
+export async function cast(item,spellKey){return castWorkflow(item,spellKey);}
+async function castWorkflow(item,spellKey,withReceipt=false){
+ const originUuid=item?.uuid,cancelled=()=>withReceipt?receipt('cancelled','cast',originUuid):undefined;
+ owned(item);if(busy.has(originUuid))return withReceipt?receipt('busy','cast',originUuid):undefined;busy.add(originUuid);
  try{
   if(!isStaff(item)&&!item.embeddedSpell)throw Error('Assign a spell on this wand’s item sheet before casting.');
-  let data={item:item.id};
+  let data={item:item.id,...(withReceipt?{receiptV1:true}:{})};
   if(isStaff(item)){
    const row=(await staffSpells(item)).find(s=>s.key===spellKey);if(!row)throw Error('Spell not found.');
    const source=new CONFIG.Item.documentClass(row.source,{parent:item.actor}),e=statEntries(item.actor,source)[0];if(!e)throw Error('This spell is not on your spell list.');data.entry=e.id;data.spell=spellKey;
    if(row.rank>0){const options=entries(item.actor).filter(e=>e.isSpontaneous).flatMap(e=>Array.from({length:11-row.rank},(_,i)=>({e,rank:row.rank+i})).filter(({e,rank})=>e.system.slots[`slot${rank}`].value>0));
-    if(options.length){const enough=flags(item).charges>=row.rank;const selected=await dialog('Cast from Staff',`<p>${esc(source.name)} — Rank ${row.rank}</p><select>${options.map((o,i)=>`<option value="${i}">${esc(o.e.name)} — Rank ${o.rank} (${o.e.system.slots[`slot${o.rank}`].value} left)</option>`).join('')}</select>`,[{action:'charges',label:`${row.rank} charges`,disabled:!enough,callback:()=>({})},{action:'slot',label:'1 charge + spell slot',disabled:flags(item).charges<1,callback:(_e,_b,d)=>{const o=options[Number(d.element.querySelector('select').value)];return {slot:{entry:o.e.id,rank:o.rank}};}},{action:'cancel',label:'Cancel',callback:()=>false}]);if(!selected)return;Object.assign(data,selected);}
+    if(options.length){const enough=flags(item).charges>=row.rank;const selected=await dialog('Cast from Staff',`<p>${esc(source.name)} — Rank ${row.rank}</p><select>${options.map((o,i)=>`<option value="${i}">${esc(o.e.name)} — Rank ${o.rank} (${o.e.system.slots[`slot${o.rank}`].value} left)</option>`).join('')}</select>`,[{action:'charges',label:`${row.rank} charges`,disabled:!enough,callback:()=>({})},{action:'slot',label:'1 charge + spell slot',disabled:flags(item).charges<1,callback:(_e,_b,d)=>{const o=options[Number(d.element.querySelector('select').value)];return {slot:{entry:o.e.id,rank:o.rank}};}},{action:'cancel',label:'Cancel',callback:()=>false}]);if(!selected)return cancelled();Object.assign(data,selected);}
    }
   }else{
-   const choice=await castingChoice(item,item.embeddedSpell);if(!choice)return;Object.assign(data,choice);
-   if(item.category==='wand'&&item.uses.value<1){const yes=await foundry.applications.api.DialogV2.confirm({window:{title:'Overcharge Wand'},content:`<p>${esc(item.name)}: ${flags(item).overcharged?'another overcharge destroys this wand without casting.':'cast again, then roll DC 10. Success breaks the wand; failure destroys it.'}</p>`});if(!yes)return;data.overcharge=true;}
+   const choice=await castingChoice(item,item.embeddedSpell,withReceipt);if(!choice)return cancelled();if(choice.trickFailed)return receipt('trick-failed','cast',originUuid,{commitObserved:true});Object.assign(data,choice);
+   if(item.category==='wand'&&item.uses.value<1){const yes=await foundry.applications.api.DialogV2.confirm({window:{title:'Overcharge Wand'},content:`<p>${esc(item.name)}: ${flags(item).overcharged?'another overcharge destroys this wand without casting.':'cast again, then roll DC 10. Success breaks the wand; failure destroys it.'}</p>`});if(!yes)return cancelled();data.overcharge=true;}
   }
   return await request(item.actor,'cast',data);
- }finally{busy.delete(item.uuid);}
+ }finally{busy.delete(originUuid);}
 }
-async function prepare(item){
- owned(item);const a=item.actor,options=[];
+async function prepare(item){return prepareWorkflow(item);}
+async function prepareWorkflow(item,withReceipt=false){
+ const originUuid=item?.uuid;owned(item);const a=item.actor,options=[];
  for(const e of entries(a).filter(e=>e.isPrepared))for(let rank=1;rank<=10;rank++){const s=e.system.slots[`slot${rank}`];if(!s.max)continue;if(e.isFlexible&&s.value>0)options.push({entry:e.id,rank,label:`${e.name} — Rank ${rank}`});else if(!e.isFlexible)for(const[index,p]of Object.entries(s.prepared))if(!p.expended)options.push({entry:e.id,rank,index,label:`${e.name} — Rank ${rank}: ${a.items.get(p.id)?.name??'Empty slot'}`});}
  const selection=await choose('Prepare Staff',`<p>${esc(item.name)} gains ${maxRank(a)} charges. You may expend one prepared slot for extra charges.</p><select><option value="">No extra slot</option>${options.map((o,i)=>`<option value="${i}">${esc(o.label)}</option>`).join('')}</select>`);
- if(selection===null||selection===undefined||selection===false)return;return request(a,'prepare',{item:item.id,slot:selection===''?null:options[Number(selection)]});
+ if(selection===null||selection===undefined||selection===false)return withReceipt?receipt('cancelled','prepare',originUuid):undefined;return request(a,'prepare',{item:item.id,...(withReceipt?{receiptV1:true}:{}),slot:selection===''?null:options[Number(selection)]});
 }
+function boundedReceipt(value,operation,itemUuid){
+ const unknown=()=>receipt('unknown',operation,itemUuid);
+ if(value?.apiVersion!==1||value.itemUuid!==(itemUuid??null)||!['completed','cancelled','busy','trick-failed','unknown'].includes(value.status))return unknown();
+ if(value.operation!==operation&&!(operation==='cast'&&value.operation==='destroy-wand'))return unknown();
+ if(value.status==='completed'){
+  if(value.commitObserved!==true)return unknown();
+  if(value.operation==='cast'){if(value.cast!==true||typeof value.createdMessageUuid!=='string'||!value.createdMessageUuid)return unknown();return completedCast(itemUuid,{uuid:value.createdMessageUuid},value.itemConsumed===true);}
+  if(value.operation==='destroy-wand'){if(value.cast!==false)return unknown();return receipt('completed','destroy-wand',itemUuid,{commitObserved:true,cast:false});}
+  return receipt('completed','prepare',itemUuid,{commitObserved:true});
+ }
+ if(value.operation!==operation)return unknown();
+ if(value.status==='trick-failed')return operation==='cast'&&value.commitObserved===true?receipt('trick-failed','cast',itemUuid,{commitObserved:true}):unknown();
+ return receipt(value.status,operation,itemUuid);
+}
+export const receiptsV1=Object.freeze({apiVersion:1,
+ async cast(item,spellKey){const uuid=item?.uuid;try{return boundedReceipt(await castWorkflow(item,spellKey,true),'cast',uuid);}catch{return receipt('unknown','cast',uuid);}},
+ async prepare(item){const uuid=item?.uuid;try{return boundedReceipt(await prepareWorkflow(item,true),'prepare',uuid);}catch{return receipt('unknown','prepare',uuid);}}
+});
 async function render(sheet,html){
  const a=sheet.actor,root=html instanceof HTMLElement?html:html[0];if(!a.isOfType('character'))return;
  const panel=root.querySelector('.tab.activations[data-tab="activations"]');if(!panel)return;
@@ -163,7 +186,7 @@ async function render(sheet,html){
  section.addEventListener('change',async event=>{const input=event.target.closest('[data-item-charges],[data-wand-uses]');if(!input)return;event.stopPropagation();try{if(input.dataset.wandUses)await request(a,'wandUses',{item:input.dataset.castingItem,field:input.dataset.wandUses,value:Number(input.value)});else await request(a,'charges',{item:input.dataset.itemCharges,value:Number(input.value)});}catch(e){ui.notifications.warn(e.message);sheet.render(false);}});
 }
 Hooks.once('ready',()=>{
- request=transport(ID,execute);game.modules.get(ID).api={cast,staffSpells,prepare,request:(a,action,data)=>request(a,action,data),flags,maxRank,trickLock};
+ request=transport(ID,execute);game.modules.get(ID).api={cast,staffSpells,prepare,receiptsV1,request:(a,action,data)=>request(a,action,data),flags,maxRank,trickLock};
  const proto=CONFIG.PF2E.Item.documentClasses.consumable.prototype,original=proto.consume;
  proto.consume=async function(...args){if(this.actor?.isOfType('character')&&isConsumable(this))return cast(this);return original.apply(this,args);};
  const spellProto=CONFIG.PF2E.Item.documentClasses.spell.prototype,options=spellProto.getRollOptions;

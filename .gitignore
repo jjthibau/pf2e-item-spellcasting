@@ -32,3 +32,12 @@
 !/styles/items.css
 **/__pycache__/
 **/*.pyc
+
+# Public receipt API contracts and synthetic tests only.
+!/tests/
+/tests/*
+!/tests/receipts.test.mjs
+!/docs/api.md
+!/docs/implementation/
+/docs/implementation/*
+!/docs/implementation/activation-receipts-20261102.md
