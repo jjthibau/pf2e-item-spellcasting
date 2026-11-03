@@ -13,6 +13,8 @@ const statEntries=(a,s)=>entries(a).filter(e=>e.canCast(s)).sort((a,b)=>b.statis
 const turnKey=()=>game.combat?.started?`${game.combat.id}:${game.combat.round}:${game.combat.turn}`:null;
 const trickLock=(i,a)=>{const lock=flags(i).trickLocks?.[a.id];return lock?.epoch===(a.getFlag(ID,'restEpoch')??0)?lock:{};};
 const owned=i=>{if(!i?.actor?.isOwner)throw Error('You must own this character.');};
+// Only these local eligibility refusals occur before a check or authority dispatch.
+class ActivationUnavailable extends Error {}
 async function dialog(title,content,buttons){return foundry.applications.api.DialogV2.wait({window:{title},content,buttons,rejectClose:false});}
 async function choose(title,content,options){return dialog(title,content,[{action:'choose',label:'Confirm',default:true,callback:(_e,_b,d)=>d.element.querySelector('select')?.value},{action:'cancel',label:'Cancel',callback:()=>false}]);}
 
@@ -42,10 +44,10 @@ function completedCast(itemUuid,message,itemConsumed=false){if(!validMessageUuid
 async function castingChoice(item,spell,withReceipt=false){
  const a=item.actor,normal=a.spellcasting.filter(e=>e.statistic&&e.canCast(spell,{origin:item})).sort((x,y)=>y.statistic.dc.value-x.statistic.dc.value);
  if(normal.length)return {entry:normal[0].original?.id??normal[0].id};
- if(!a.itemTypes.feat.some(f=>f.slug==='trick-magic-item'))throw Error('No matching spellcasting ability or Trick Magic Item.');
- const lock=trickLock(item,a);if(lock.blocked||(turnKey()&&lock.turn===turnKey()))throw Error(lock.blocked?'Trick Magic Item is unavailable until daily preparations.':'You cannot retry Trick Magic Item this turn.');
+ if(!a.itemTypes.feat.some(f=>f.slug==='trick-magic-item'))throw new ActivationUnavailable('No matching spellcasting ability or Trick Magic Item.');
+ const lock=trickLock(item,a);if(lock.blocked||(turnKey()&&lock.turn===turnKey()))throw new ActivationUnavailable(lock.blocked?'Trick Magic Item is unavailable until daily preparations.':'You cannot retry Trick Magic Item this turn.');
  const map={arcane:'arcana',primal:'nature',occult:'occultism',divine:'religion'},skills=[...new Set([...spell.traditions].map(t=>map[t]).filter(Boolean))].filter(s=>a.skills[s].rank>0);
- if(!skills.length)throw Error('You are not trained in an appropriate skill.');
+ if(!skills.length)throw new ActivationUnavailable('You are not trained in an appropriate skill.');
  const skill=await choose('Trick Magic Item',`<p>Choose the skill for ${esc(item.name)}.</p><select>${skills.map(s=>`<option value="${s}">${esc(game.i18n.localize(CONFIG.PF2E.skills[s].label))}</option>`).join('')}</select>`,skills);
  if(!skill)return null;
  const dc=[14,15,16,18,19,20,22,23,24,26,27,28,30,31,32,34,35,36,38,39,40,42,44,46,48,50][Math.clamp(item.level,0,25)]-(game.pf2e.settings.variants.pwol.enabled?item.level:0);
@@ -157,7 +159,7 @@ function boundedReceipt(value,operation,itemUuid){
  return receipt(value.status,operation,itemUuid);
 }
 export const receiptsV1=Object.freeze({apiVersion:1,
- async cast(item,spellKey){const uuid=item?.uuid;if(!validItemUuid(uuid))return receipt('unknown','cast',null);try{return boundedReceipt(await castWorkflow(item,spellKey,true),'cast',uuid);}catch{return receipt('unknown','cast',uuid);}},
+ async cast(item,spellKey){const uuid=item?.uuid;if(!validItemUuid(uuid))return receipt('unknown','cast',null);try{return boundedReceipt(await castWorkflow(item,spellKey,true),'cast',uuid);}catch(error){if(error instanceof ActivationUnavailable){globalThis.ui?.notifications?.warn(error.message);return receipt('cancelled','cast',uuid);}return receipt('unknown','cast',uuid);}},
  async prepare(item){const uuid=item?.uuid;if(!validItemUuid(uuid))return receipt('unknown','prepare',null);try{return boundedReceipt(await prepareWorkflow(item,true),'prepare',uuid);}catch{return receipt('unknown','prepare',uuid);}}
 });
 async function render(sheet,html){

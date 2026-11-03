@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-const docs=new Map(),dialogs=[],events=[];let ready,socketHandler,messageCounter=0,dialogWait,postWait,writeWait,postError,missingMessage=false,degree=2,rollCancelled=false;
+const docs=new Map(),dialogs=[],events=[],warnings=[];let ready,socketHandler,messageCounter=0,dialogWait,postWait,writeWait,postError,missingMessage=false,degree=2,rollCancelled=false;
+globalThis.ui={notifications:{warn:message=>warnings.push(message)}};
 const user={id:'test-owner',active:true};
 globalThis.Hooks={once:(_n,f)=>ready=f,on:()=>{}};
 globalThis.Math.clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
@@ -20,7 +21,7 @@ const spell=new Spell(spellSource),items=new Map(),actorFlags={};const actor={id
 const casting=[entry];casting.spellcastingFeatures=[entry];casting.get=id=>id===entry.id?entry:null;actor.spellcasting=casting;
 const item={id:'item',uuid:actor.uuid+'.Item.item',name:'Synthetic item',actor,category,quantity:1,uses:{value:1,max:1},isIdentified:true,traits:new Set(staff?['staff']:[]),system:{description:{value:'Synthetic staff'}},embeddedSpell:spell,level:1,isOfType:(...types)=>types.includes(staff?'equipment':'consumable'),getFlag:()=>state,async setFlag(_m,_k,v){events.push('item-flag');if(writeWait)await writeWait;Object.assign(state,v);},async update(patch){events.push('item-write');if(writeWait)await writeWait;for(const[k,v]of Object.entries(patch)){if(k==='system.quantity')this.quantity=v;else if(k==='system.uses.value')this.uses.value=v;}},async delete(){events.push('item-delete');items.delete(this.id);this.uuid=null;}};
 items.set(item.id,item);docs.set(actor.uuid,actor);docs.set('Spell.synthetic',{id:'synthetic',isOfType:t=>t==='spell',toObject:()=>spellSource});return {actor,item,entry,state,actorFlags};}
-const reset=()=>{dialogs.length=0;events.length=0;dialogWait=postWait=writeWait=null;postError=null;missingMessage=false;degree=2;rollCancelled=false;};
+const reset=()=>{dialogs.length=0;events.length=0;warnings.length=0;dialogWait=postWait=writeWait=null;postError=null;missingMessage=false;degree=2;rollCancelled=false;delete game.combat;};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const tick=()=>new Promise(r=>setImmediate(r));
 function bounded(r){assert.doesNotThrow(()=>structuredClone(r));assert.ok(Object.keys(r).every(k=>['apiVersion','status','operation','itemUuid','createdMessageUuid','commitObserved','cast','itemConsumed'].includes(k)));assert.equal(r.apiVersion,1);}
@@ -32,6 +33,34 @@ test('second overcharge destruction is committed but explicitly does not cast',a
 test('first overcharge completion awaits native roll and preserves legacy result',async()=>{reset();const f=fixture();f.item.uses.value=0;dialogs.push(true);const r=await receiptsV1.cast(f.item);assert.equal(r.status,'completed');assert.equal(f.state.condition,'broken');assert.ok(events.includes('overcharge-roll'));const g=fixture();g.item.uses.value=0;dialogs.push(true);assert.deepEqual(await cast(g.item),{status:'cast',overcharge:true});});
 test('Trick Magic Item choice and check dismissal are cancelled; failures commit failed attempt only',async()=>{reset();for(const mode of ['choice','roll','failure','critical']){const f=fixture('wand',{native:false,trick:true});degree=mode==='critical'?0:1;rollCancelled=mode==='roll';dialogs.push(mode==='choice'?false:'arcana');const r=await receiptsV1.cast(f.item);bounded(r);assert.equal(r.status,['failure','critical'].includes(mode)?'trick-failed':'cancelled');assert.equal(r.cast,undefined);assert.equal(f.item.uses.value,1);if(r.status==='trick-failed'){assert.equal(r.commitObserved,true);assert.equal(f.state.trickLocks[f.actor.id].blocked,mode==='critical');}}});
 test('legacy Trick Magic Item failure remains undefined and legacy errors still reject',async()=>{reset();const f=fixture('wand',{native:false,trick:true});dialogs.push('arcana');degree=1;assert.equal(await cast(f.item),undefined);const denied=fixture();denied.actor.isOwner=false;await assert.rejects(cast(denied.item),/own/);assert.equal((await receiptsV1.cast(denied.item)).status,'unknown');});
+
+test('known local eligibility refusals warn and cancel before any check, card or resource dispatch',async()=>{
+ for(const mode of ['no-trick','untrained','blocked','same-turn']){
+  reset();const f=fixture('wand',{native:false,trick:mode!=='no-trick'});
+  if(mode==='untrained')f.actor.skills.arcana.rank=0;
+  if(mode==='blocked')f.state.trickLocks={[f.actor.id]:{blocked:true,epoch:0}};
+  if(mode==='same-turn'){game.combat={started:true,id:'combat',round:1,turn:0};f.state.trickLocks={[f.actor.id]:{turn:'combat:1:0',epoch:0}};}
+  let checks=0;f.actor.skills.arcana.check.roll=async()=>{checks++;throw Error('Must not roll');};
+  const r=await receiptsV1.cast(f.item);bounded(r);
+  assert.equal(r.status,'cancelled');assert.equal(r.commitObserved,undefined);assert.equal(r.createdMessageUuid,undefined);
+  assert.equal(checks,0);assert.equal(f.item.uses.value,1);assert.equal(events.length,0);assert.equal(warnings.length,1);
+  assert.match(warnings[0],/matching spellcasting|not trained|unavailable|cannot retry/);
+ }
+ reset();
+});
+
+test('legacy eligibility refusals still reject without API-owned warnings',async()=>{
+ reset();const f=fixture('wand',{native:false});
+ await assert.rejects(cast(f.item),/No matching spellcasting ability or Trick Magic Item/);
+ assert.deepEqual(warnings,[]);assert.equal(events.length,0);assert.equal(f.item.uses.value,1);
+});
+
+test('check exceptions cannot masquerade as safe eligibility refusal by name or message',async()=>{
+ reset();const f=fixture('wand',{native:false,trick:true});dialogs.push('arcana');
+ f.actor.skills.arcana.check.roll=async()=>{throw Object.assign(Error('No matching spellcasting ability or Trick Magic Item.'),{name:'ActivationUnavailable'});};
+ const r=await receiptsV1.cast(f.item);assert.equal(r.status,'unknown');assert.equal(r.commitObserved,undefined);
+ assert.deepEqual(warnings,[]);assert.equal(f.item.uses.value,1);
+});
 test('receipt errors, timeouts, write rejection and missing messages never claim completion or retry',async()=>{reset();for(const mode of ['post','write','message']){const f=fixture();postError=mode==='post'?Error('Request timed out; private details'):null;missingMessage=mode==='message';if(mode==='write')f.item.update=async()=>{throw Error('Uncertain write');};const r=await receiptsV1.cast(f.item);bounded(r);assert.equal(r.status,'unknown');assert.equal(r.commitObserved,undefined);assert.equal(r.createdMessageUuid,undefined);}reset();const f=fixture();postError=Error('legacy error');await assert.rejects(cast(f.item),/legacy error/);});
 test('prepare cancellation covers close and false; completed prepare awaits native flags',async()=>{reset();for(const selection of [null,undefined,false]){dialogs.push(selection);const f=fixture('staff',{staff:true});assert.equal((await receiptsV1.prepare(f.item)).status,'cancelled');assert.equal(f.state.charges,undefined);}const f=fixture('staff',{staff:true}),wait=deferred();writeWait=wait.promise;dialogs.push('');let settled=false;const pending=receiptsV1.prepare(f.item).then(r=>(settled=true,r));await tick();assert.equal(settled,false);wait.resolve();const r=await pending;assert.equal(r.status,'completed');assert.equal(r.operation,'prepare');assert.equal(r.commitObserved,true);assert.equal(f.state.charges,1);});
 test('staff payment cancellation and completed charge payment preserve native path',async()=>{reset();const f=fixture('staff',{staff:true});f.entry.isSpontaneous=true;Object.assign(f.state,{charges:2,preparedBy:f.actor.uuid,expires:86400});f.actorFlags.day={staff:f.item.id};dialogs.push(false);assert.equal((await receiptsV1.cast(f.item,'1:synthetic')).status,'cancelled');assert.equal(f.state.charges,2);dialogs.push({});const r=await receiptsV1.cast(f.item,'1:synthetic');assert.equal(r.status,'completed');assert.equal(f.state.charges,1);dialogs.push({});assert.deepEqual(await cast(f.item,'1:synthetic'),{status:'cast',cost:1});});
