@@ -29,10 +29,10 @@ These methods use the existing dialogs, ownership checks, rules and serialized n
 | Status | Meaning |
 | --- | --- |
 | `completed` | All awaited work in the existing native executor completed. Casts include the actual spell-card UUID and `cast: true`. Preparation uses operation `prepare`, `commitObserved: true`, without a message. Already-overcharged wand destruction uses operation `destroy-wand`, `commitObserved: true`, `cast: false`, without a message. |
-| `cancelled` | An explicit existing choice/check dialog was cancelled or dismissed. This does not refund prior native checks or imply every earlier interaction was mutation-free. |
+| `cancelled` | An existing choice/check dialog was cancelled or dismissed, or a known local eligibility check refused activation before any check or authority dispatch. Eligibility refusal shows a native warning. Cancellation does not refund prior native checks or imply every earlier interaction was mutation-free. |
 | `busy` | This client already has a cast in progress for the item. No second cast is dispatched by this call. |
 | `trick-failed` | Trick Magic Item failed and its existing failure-lock request completed. `commitObserved: true` describes that failed attempt, never a successful cast or uncommitted cancellation. |
-| `unknown` | An exception, timeout or missing observable spell-card result prevents a completion claim. The outcome may already have committed partially or fully. Check the native world; never automatically retry. |
+| `unknown` | Any other exception, timeout or missing observable spell-card result prevents a completion claim. The outcome may already have committed partially or fully. Check the native world; never automatically retry. |
 
 `itemConsumed: true` is added only after the existing final-scroll native `await item.delete()` succeeds. It is absent for remaining copies, wands, staves, failed deletion and noncompleted outcomes; it is never inferred from disappearance or quantity differences.
 
