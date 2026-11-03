@@ -29,3 +29,15 @@ the safe error's name/message. All 21 portable tests pass. Native verification o
 the corrected refusal is pending in the already-owned Pocket Table loopback lane;
 the earlier integration cases do not prove this new source fix. This receipt was
 also normalized from its original Windows encoding to UTF-8.
+
+The targeted native follow-up subsequently passed four checks on runtime source
+`afb302cb438b84d1c801bc8a3dafecadfbd72888` with Pocket Table source
+`22d012aa01af5eff08ecdb0d979fdab89595eb99`, Foundry 14.369 / PF2e 8.6.0:
+missing Trick Magic Item and untrained Trick Magic Item both showed their native
+warnings, left charges/chat unchanged and released the mobile gate; an ordinary
+cast still produced exactly one card and one resource use with an unlocked gate;
+zero page errors were recorded. This was a desktop Chromium synthetic phone
+viewport, not Android or physical-device acceptance. The earlier 29 combined
+integration checks remain separate evidence on the prior API source. No whole
+suite was repeated for the three local exception sites. The coordinator retained
+the exclusive test lane for final exact runtime/settings/cache restoration.
