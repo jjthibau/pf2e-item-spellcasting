@@ -24,6 +24,7 @@
 !/.github/workflows/ci.yml
 !/.github/workflows/release.yml
 !/scripts/main.js
+!/scripts/staff-transactions.js
 !/scripts/transport.js
 !/tools/build_release.py
 !/tools/check_release.py

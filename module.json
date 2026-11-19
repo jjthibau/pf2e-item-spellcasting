@@ -2,7 +2,7 @@
   "id": "pf2e-item-spellcasting",
   "title": "PF2e Item Spellcasting",
   "description": "Wands, scrolls and staff spells together on the Spellcasting page.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "authors": [
     {
       "name": "Jesse",
@@ -35,7 +35,7 @@
   "socket": true,
   "url": "https://github.com/jjthibau/pf2e-item-spellcasting",
   "manifest": "https://github.com/jjthibau/pf2e-item-spellcasting/releases/latest/download/module.json",
-  "download": "https://github.com/jjthibau/pf2e-item-spellcasting/releases/download/v0.1.0/module.zip",
+  "download": "https://github.com/jjthibau/pf2e-item-spellcasting/releases/download/v0.1.1/module.zip",
   "readme": "README.md",
   "license": "LICENSE",
   "bugs": "https://github.com/jjthibau/pf2e-item-spellcasting/issues",

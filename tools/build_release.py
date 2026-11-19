@@ -6,7 +6,7 @@ from pathlib import Path
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-FILES=['module.json', 'scripts/main.js', 'scripts/transport.js', 'README.md', 'LICENSE', 'CHANGELOG.md', 'docs/architecture.md', 'docs/testing.md', 'styles/items.css']
+FILES=['module.json', 'scripts/main.js', 'scripts/staff-transactions.js', 'scripts/transport.js', 'README.md', 'LICENSE', 'CHANGELOG.md', 'docs/architecture.md', 'docs/testing.md', 'styles/items.css']
 
 def build(tag=None):
     manifest=json.loads((ROOT/'module.json').read_text(encoding='utf-8'))

@@ -19,7 +19,9 @@ Tested on **Foundry VTT 14.369 / PF2e 8.6.0**. Intended for native character she
 - **Staves:** Prepare once per day for charges based on your highest spell-slot rank. Prepared casters can select one actual prepared slot to spend for extra charges. Spontaneous casters choose spell-rank charges or one charge plus a same-or-higher-rank spontaneous slot. Insufficient payment options are disabled; cantrips are free.
 - **Daily rest:** native Rest for the Night resets wand overcharge tracking and recharges the chosen staff. Usage and charges can also be edited/reset on the tab. After resting, staff preparation can be adjusted until its first cast.
 
-Items must be identified and in inventory. Draw stowed items before casting. Click an item's name to open its full native rules.
+Items must be identified and in inventory. Hold standard casting items with the required number of hands before casting. Items with a different usage follow that item's equip requirement. Click an item's name to open its full native rules.
+
+If a staff action is interrupted, reopen **Item Spells** and select **Resume Staff Action**. An interrupted cast resumes payment against the original spell card. If the original card or payment cannot be confirmed, review the chat log and the character's resources, make any needed corrections, and use **Reconcile Staff Action** to clear the record. After resting, preparing a different staff releases your reservation on the previous staff.
 
 ## Specialty items and limitations
 

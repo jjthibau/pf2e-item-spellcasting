@@ -6,8 +6,8 @@ Coverage includes separate player/GM clients, ownership routing, double clicks, 
 
 No exhaustive coverage of all items, exceptional feats, custom sheets, campaign module combinations, or mobile devices is claimed. GitHub CI runs syntax and packaging checks; it does not run the private licensed native test environment. Reproduce behavior changes in a disposable world before updating a campaign.
 
-## Additive activation receipts (unreleased source)
+## Activation receipts and interrupted staff actions
 
-`npm test` now includes 18 portable workflow tests using synthetic actor/item/spell/dialog/transport collaborators. These exercise the actual shared workflow and executor, not a duplicate rules implementation. Coverage includes legacy results/errors and unrelated consume compatibility, awaiting spell cards/resource writes, origin snapshots after final-scroll deletion, busy and cancellation branches, staff charge and slot payment/preparation, Trick Magic Item dismissal/failure/critical failure and awaited lock writes, overcharge and destruction without a cast, missing messages, partial-write errors and a single-dispatch authority timeout without retries. `npm run build` and `npm run check:release` continue to verify the explicit nine-file original/public archive.
+`npm test` runs 27 workflow tests through the module executor and APIs. The cases include native-style card cancellation, carrying restrictions and changes while choosing a cast, Trick Magic Item, receipt validation, final-scroll deletion, interrupted staff payment and preparation, and retaining native resource edits after an interrupted staff action. `npm run build` and `npm run check:release` verify the explicit ten-file archive, byte parity and checksums.
 
-This is portable source evidence only. No new native Foundry, emulator, production, release or deployment test occurred for the receipt addition. The historical native assertions above describe the previously published implementation, not new receipt acceptance. The receipt API is documented in [api.md](api.md); native integration of a future consumer remains a separate gate.
+Focused native receipt checks for the earlier source revision are recorded in [Activation receipt validation](implementation/activation-receipts-20261102.md). See [the API contract](api.md) for integration behavior.
