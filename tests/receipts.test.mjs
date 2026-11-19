@@ -82,6 +82,7 @@ test('malformed, wrong-document, control and oversized message UUIDs stay unknow
 function preparedStaff() {
  const f=fixture('staff',{staff:true});
  f.entry.isSpontaneous=true;
+ f.entry.system.slots.slot1.max=4;
  f.entry.system.slots.slot1.value=2;
  Object.assign(f.state,{charges:3,max:3,preparedBy:f.actor.uuid,expires:86400});
  f.actorFlags.day={staff:f.item.id,rested:true};

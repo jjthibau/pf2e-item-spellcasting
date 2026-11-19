@@ -214,6 +214,7 @@ async function render(sheet,html){
  panel.querySelector('.item-spellcasting')?.remove();const section=document.createElement('section');section.className='item-spellcasting';panel.prepend(section);
  root.querySelector('.sub-nav [data-tab="activations"]').textContent='Item Spells';
  const recovery=pendingStaff(a);
+ bindSheetActions(section,sheet,a,recovery);
  if(recovery&&a.isOwner)section.insertAdjacentHTML('beforeend',`<p role="status">A staff ${recovery.kind==='cast'?'cast':'preparation'} is pending. Resume the recorded action or check the chat card, slots and charges before reconciling it.</p><div class="item-row"><button type="button" data-item-spell-action="resumeStaff">Resume Staff Action</button><button type="button" data-item-spell-action="reconcileStaff">Reconcile Staff Action</button></div>`);
  const items=a.inventory.contents.filter(eligible),button=(action,id,text,disabled=false,extra='')=>`<button type="button" data-item-spell-action="${action}" data-casting-item="${id}" ${disabled?'disabled':''} ${extra}>${text}</button>`;
  for(const category of ['wand','scroll','staff']){
@@ -235,9 +236,12 @@ async function render(sheet,html){
   }
  }
  if(!items.length)section.insertAdjacentHTML('beforeend','<p>Identified wands, scrolls and staves in your inventory appear here.</p>');
+}
+
+function bindSheetActions(section,sheet,a,recovery){
  section.addEventListener('click',async event=>{
   const b=event.target.closest('[data-item-spell-action]');if(!b)return;event.preventDefault();event.stopPropagation();
-  const i=a.items.get(b.dataset.castingItem),action=b.dataset.itemSpellAction;b.disabled=true;
+  const i=b.dataset.castingItem?a.items.get(b.dataset.castingItem):undefined,action=b.dataset.itemSpellAction;b.disabled=true;
   try{
    if(action==='open')await i.sheet.render(true);
    else if(action==='cast')await cast(i,b.dataset.staffSpell);
